@@ -26,8 +26,7 @@ import {
   Trash2,
   Database,
   Download,
-  Printer,
-  LogOut
+  Printer
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { 
@@ -40,21 +39,20 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { useLocalStorage } from './lib/storage.ts';
+import { useAppDatabase } from './lib/storage.ts';
 import { calculateAmortization, formatCurrency } from './lib/calculations.ts';
 import { InterestType, PaymentFrequency } from './types.ts';
 
 type View = 'dashboard' | 'customers' | 'loans' | 'new-customer' | 'new-loan' | 'edit-customer';
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
   const [paymentModalLoanId, setPaymentModalLoanId] = useState<string | null>(null);
   const [receiptPaymentId, setReceiptPaymentId] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ id: string, type: 'loan' | 'payment' } | null>(null);
-  const { data, addCustomer, updateCustomer, addLoan, deleteLoan, addPayment, deletePayment, registerUser } = useLocalStorage();
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string, type: 'loan' | 'payment' | 'customer' } | null>(null);
+  const { data, loading, addCustomer, updateCustomer, deleteCustomer, addLoan, deleteLoan, addPayment, deletePayment } = useAppDatabase();
 
   // Metrics
   const totalPrincipal = data.loans.reduce((acc, l) => acc + l.principal, 0);
@@ -162,14 +160,23 @@ export default function App() {
     if (confirmDelete.type === 'loan') {
       deleteLoan(confirmDelete.id);
       setSelectedLoanId(null);
+    } else if (confirmDelete.type === 'customer') {
+      deleteCustomer(confirmDelete.id);
     } else {
       deletePayment(confirmDelete.id);
     }
     setConfirmDelete(null);
   };
 
-  if (!isAuthenticated) {
-    return <Login onLogin={() => setIsAuthenticated(true)} users={data.users} onRegister={registerUser} />;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-500 font-bold animate-pulse">Sincronizando con la nube...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -200,15 +207,6 @@ export default function App() {
             icon={<Receipt size={20} />} 
             label="Préstamos" 
           />
-          <button 
-            onClick={() => setIsAuthenticated(false)}
-            className="flex items-center gap-3 p-3 rounded-xl transition-all font-bold text-sm text-slate-400 hover:text-rose-600 hover:bg-rose-50 group mt-auto md:mt-2"
-          >
-            <div className="w-8 h-8 rounded-lg bg-slate-50 group-hover:bg-rose-100 flex items-center justify-center transition-colors">
-              <LogOut size={16} />
-            </div>
-            <span className="hidden md:inline">Cerrar Sesión</span>
-          </button>
         </nav>
 
         <div className="hidden md:block p-6 border-t border-slate-100">
@@ -486,16 +484,25 @@ export default function App() {
                         >
                           PRÉSTAMO <Plus size={12} />
                         </button>
-                        <button 
-                          onClick={() => {
-                            setEditingCustomerId(customer.id);
-                            setActiveView('edit-customer');
-                          }}
-                          className="text-slate-400 hover:text-blue-600 transition-colors p-1"
-                          title="Editar Datos"
-                        >
-                          <Edit2 size={16} />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => {
+                              setEditingCustomerId(customer.id);
+                              setActiveView('edit-customer');
+                            }}
+                            className="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                            title="Editar Datos"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button 
+                            onClick={() => setConfirmDelete({ id: customer.id, type: 'customer' })}
+                            className="text-slate-300 hover:text-rose-500 transition-colors p-1"
+                            title="Eliminar Cliente"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1101,182 +1108,12 @@ export default function App() {
   );
 }
 
-function Login({ onLogin, users, onRegister }: { onLogin: () => void, users: any[], onRegister: (u: any) => any }) {
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [user, setUser] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    
-    setTimeout(() => {
-      if (isRegistering) {
-        const success = onRegister({ username: user, password, name: fullName });
-        if (success) {
-          setIsRegistering(false);
-          setError(null);
-          alert('¡Registro exitoso! Ahora puedes iniciar sesión.');
-        } else {
-          setError('El nombre de usuario ya existe');
-        }
-      } else {
-        // Core accounts + registered accounts
-        const foundUser = users.find(u => u.username === user && u.password === password) || 
-                         (user === 'admin' && password === 'admin' ? { name: 'Administrador' } : null);
-        
-        if (foundUser) {
-          onLogin();
-        } else {
-          setError('Credenciales incorrectas');
-        }
-      }
-      setLoading(false);
-    }, 800);
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-blue-100/50 via-transparent to-transparent pointer-events-none" />
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-200 rotate-3">
-            <Receipt size={32} className="text-white -rotate-3" />
-          </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">PrestaControl</h1>
-          <p className="text-slate-500 font-medium tracking-tight">Gestión Profesional de Cartera</p>
-        </div>
-
-        <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200/60 p-10 relative overflow-hidden group border border-slate-100">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-blue-600 to-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-          
-          <h2 className="text-xl font-bold mb-6 text-slate-800">
-            {isRegistering ? 'Crear nueva cuenta' : 'Ingresar al sistema'}
-          </h2>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {isRegistering && (
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Nombre Completo</label>
-                <div className="relative">
-                  <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input 
-                    type="text" 
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-4 py-4 focus:bg-white focus:border-blue-600 outline-none transition-all font-medium text-slate-800"
-                    placeholder="Juan Perez"
-                    required
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Usuario</label>
-              <div className="relative">
-                <Users className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input 
-                  type="text" 
-                  value={user}
-                  onChange={(e) => setUser(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-4 py-4 focus:bg-white focus:border-blue-600 outline-none transition-all font-medium text-slate-800"
-                  placeholder="Ingrese su usuario"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Contraseña</label>
-              <div className="relative">
-                <Database className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-4 py-4 focus:bg-white focus:border-blue-600 outline-none transition-all font-medium text-slate-800"
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-            </div>
-
-            <AnimatePresence>
-              {error && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-2 text-rose-500 bg-rose-50 p-3 rounded-xl border border-rose-100"
-                >
-                  <AlertCircle size={16} />
-                  <p className="text-xs font-bold">{error}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <button 
-              type="submit"
-              disabled={loading}
-              className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 ${
-                loading 
-                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' 
-                  : isRegistering 
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95 shadow-emerald-200'
-                    : 'bg-slate-900 text-white hover:bg-black active:scale-95 shadow-slate-200'
-              }`}
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-              ) : (
-                <>
-                  {isRegistering ? 'Crear Cuenta' : 'Entrar al Sistema'}
-                  <ArrowRight size={18} />
-                </>
-              )}
-            </button>
-          </form>
-
-          <div className="mt-8 text-center pt-6 border-t border-slate-50">
-            <button 
-              onClick={() => {
-                setIsRegistering(!isRegistering);
-                setError(null);
-              }}
-              className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors uppercase tracking-widest"
-            >
-              {isRegistering ? '¿Ya tienes cuenta? Inicia Sesión' : '¿No tienes cuenta? Registrate'}
-            </button>
-          </div>
-
-          <div className="mt-6 text-center">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">
-              Sistema Seguro & Encriptado<br />
-              © 2026 PrestaControl Pro
-            </p>
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
 function ConfirmModal({ 
   type, 
   onClose, 
   onConfirm 
 }: { 
-  type: 'loan' | 'payment', 
+  type: 'loan' | 'payment' | 'customer', 
   onClose: () => void, 
   onConfirm: () => void 
 }) {
@@ -1302,7 +1139,9 @@ function ConfirmModal({
         <p className="text-slate-500 text-sm mb-8 leading-relaxed">
           {type === 'loan' 
             ? 'Esta acción eliminará el préstamo y todos sus abonos permanentemente. No se puede deshacer.' 
-            : 'Este abono será eliminado y los saldos del préstamo serán recalculados.'}
+            : type === 'customer'
+              ? 'Esta acción eliminará al cliente y TODOS sus préstamos y abonos asociados. No se puede deshacer.'
+              : 'Este abono será eliminado y los saldos del préstamo serán recalculados.'}
         </p>
         <div className="flex gap-3">
           <button 

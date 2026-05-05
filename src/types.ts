@@ -56,17 +56,8 @@ export interface Payment {
   receiptNumber: string;
 }
 
-export interface User {
-  id: string;
-  username: string;
-  password: string; // Stored in plain text for this local demo
-  name: string;
-  createdAt: number;
-}
-
 export interface AppData {
   customers: Customer[];
   loans: Loan[];
   payments: Payment[];
-  users: User[];
 }

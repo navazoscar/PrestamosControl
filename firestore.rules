@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(data) {
+      return isSignedIn() && data.userId == request.auth.uid;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity Validations
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['name', 'identification', 'contact', 'createdAt', 'userId'])
+        && data.keys().size() == 5
+        && data.name is string && data.name.size() <= 200
+        && data.identification is string && data.identification.size() <= 50
+        && data.contact is string && data.contact.size() <= 200
+        && data.createdAt is number
+        && data.userId == request.auth.uid;
+    }
+
+    function isValidLoan(data) {
+      return data.keys().hasAll(['customerId', 'principal', 'interestRate', 'interestType', 'frequency', 'term', 'startDate', 'status', 'totalPaid', 'remainingBalance', 'userId'])
+        && data.keys().size() == 11
+        && data.customerId is string && isValidId(data.customerId)
+        && data.principal is number && data.principal >= 0
+        && data.interestRate is number && data.interestRate >= 0
+        && data.interestType in ['Simple', 'Compuesto']
+        && data.frequency in ['Diaria', 'Semanal', 'Quincenal', 'Mensual']
+        && data.term is number && data.term > 0
+        && data.startDate is number
+        && data.status in ['active', 'completed', 'default']
+        && data.totalPaid is number
+        && data.remainingBalance is number
+        && data.userId == request.auth.uid;
+    }
+
+    function isValidPayment(data) {
+      return data.keys().hasAll(['loanId', 'amount', 'date', 'receiptNumber', 'userId'])
+        && data.keys().size() == 5
+        && data.loanId is string && isValidId(data.loanId)
+        && data.amount is number && data.amount > 0
+        && data.date is number
+        && data.receiptNumber is string && data.receiptNumber.size() <= 100
+        && data.userId == request.auth.uid;
+    }
+
+    // Collections
+    match /customers/{customerId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isOwner(existing());
+      allow create: if isSignedIn() && isValidCustomer(incoming());
+      allow update: if isOwner(existing()) && isValidCustomer(incoming())
+        && incoming().userId == existing().userId;
+      allow delete: if isOwner(existing());
+    }
+
+    match /loans/{loanId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isOwner(existing());
+      allow create: if isSignedIn() && isValidLoan(incoming())
+        && exists(/databases/$(database)/documents/customers/$(incoming().customerId))
+        && get(/databases/$(database)/documents/customers/$(incoming().customerId)).data.userId == request.auth.uid;
+      allow update: if isOwner(existing()) && isValidLoan(incoming())
+        && incoming().userId == existing().userId;
+      allow delete: if isOwner(existing());
+    }
+
+    match /payments/{paymentId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isOwner(existing());
+      allow create: if isSignedIn() && isValidPayment(incoming())
+        && exists(/databases/$(database)/documents/loans/$(incoming().loanId))
+        && get(/databases/$(database)/documents/loans/$(incoming().loanId)).data.userId == request.auth.uid;
+      allow update: if isOwner(existing()) && isValidPayment(incoming())
+        && incoming().userId == existing().userId;
+      allow delete: if isOwner(existing());
+    }
+  }
+}

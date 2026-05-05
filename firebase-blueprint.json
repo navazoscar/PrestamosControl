@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "Customer": {
+      "title": "Customer",
+      "description": "Information about a client who takes loans.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "identification": { "type": "string" },
+        "contact": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["name", "identification", "contact", "createdAt", "userId"]
+    },
+    "Loan": {
+      "title": "Loan",
+      "description": "Details of a loan provided to a customer.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "principal": { "type": "number" },
+        "interestRate": { "type": "number" },
+        "interestType": { "type": "string", "enum": ["Simple", "Compuesto"] },
+        "frequency": { "type": "string", "enum": ["Diaria", "Semanal", "Quincenal", "Mensual"] },
+        "term": { "type": "number" },
+        "startDate": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "completed", "default"] },
+        "totalPaid": { "type": "number" },
+        "remainingBalance": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["customerId", "principal", "interestRate", "interestType", "frequency", "term", "startDate", "status", "totalPaid", "remainingBalance", "userId"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A payment made towards a loan.",
+      "type": "object",
+      "properties": {
+        "loanId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "number" },
+        "receiptNumber": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["loanId", "amount", "date", "receiptNumber", "userId"]
+    }
+  },
+  "firestore": {
+    "customers": {
+      "schema": "Customer",
+      "description": "Collection of all customers."
+    },
+    "loans": {
+      "schema": "Loan",
+      "description": "Collection of all loans."
+    },
+    "payments": {
+      "schema": "Payment",
+      "description": "Collection of all loan payments."
+    }
+  }
+}
